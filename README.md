@@ -1,16 +1,26 @@
 ## Presented by `Fe`tching
-*(better rust/iron pun TBA)*
+*(better Rust/iron pun TBA)*
 - George Huebner (georgeh3)
 
-# Project Rationale
+# So Long Bevy
 
-I've wanted to make a game for a while now, and although the Rust gamedev ecosystem is still far from the maturity of Unity or Unreal, I like Rust infinitely more than C# and even C++. I'm still not 100% if I want to use Bevy or Macroquad, but I think the latter would be a little easier to tinker around with. Trying to implement stuff like audio/rendering is out of the scope of this project, but I do think it's cool that Macroquad can target WASM, because more people will be willing to try your game in the browser.
+[![](https://img.youtube.com/vi/M1vfXoUNDYA/0.jpg)](https://www.youtube.com/watch?v=M1vfXoUNDYA)
 
-I also considered fleshing out a `ls-R` to tectonic mapping system, but I'm no Donald Knuth --- I don't hate myself *that* much. This is my backup of something that is more broadly useful if for some reason things go really far south and I have to abandon ship on the game idea.
+*We've got a great name, a great team, and a GREAT name. Let's pivot!*
 
-For theme/game mechanics, I wanted to explore a concept mashup of a classic dungeon crawler like Zelda with the tactical turn based combat of Fire Emblem. Choosing a 2D game offloads a ton of asset work and sandbox design --- as a fair warning, I am planning on copying most, if not all, of my assets from other games (with attribution, of course). I worked on a Fire Emblem clone in Python once before, and most stuff boiled down to stat calculations and turn management, so I feel decently confident that a working prototype is feasible.
+I have decided not to proceed with my original idea of designing a game in Bevy. There are a few reasons for this decision:
 
-![](https://assets.reedpopcdn.com/eurogamer-yau868.jpg/BROK/resize/1200x1200%3E/format/jpg/quality/70/eurogamer-yau868.jpg)
-![](https://www.fireemblemwod.com/fe6/mapasfe6/14.png)
+1. Bevy's ECS is cool and all, but from everything I've seen, I wouldn't really be leveraging Rust itself when making a game using an existing framework: I would be writing Bevy code, not Rust code.
+    * I would really like to explore building a game from the ground up (in Rust) in the future, but this is a significantly larger endeavor than can be accomplished in a semester project.
+2. The Rust gamedev ecosystem has yet to reach maturity. I, too, like to live life on the bleeding edge sometimes, but having all dependencies break each other gets very tiring very quickly.
+3. I could feasibly make a prototype, but likely not one that I would actually be happy with. I knew the asset pipeline would be bad, but I underestimated that even ripping assets from existing games would still be a lot of work.
 
-Restricting players to specific movesets can create new challenges, but not with the same sandbox of Zelda (i.e. chucking bombs everywhere)
+Intstead, I will be working on a compatibility layer for the Tectonic typesetting system. Why Tectonic?
+
+1. It's open source — Other people can actually use my code, and it might even get merged upstream!
+2. It solves a problem. I'm no stranger to building useless things, but having something hat I can benefit from motivates me to actually make the project good.
+3. It uses Rust. Well, no duh, Bevy uses Rust too, but the whole purpose of Tectonic is to provide a safe, platform-independent wrapper over the $\LaTeX$ wrappers of yore. It makes sense to write this project in Rust: I can claim moral superiority over C# users now!
+
+<br>
+
+![](Untitled.png)
