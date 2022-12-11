@@ -1,8 +1,10 @@
 use core::panic;
 use std::collections::HashMap;
+use std::env;
 use std::io::{self, Read, prelude::*};
 use std::fs::File;
 use std::path::PathBuf;
+use std::process::{Command, Output};
 
 use tectonic_bundles::cache::{CachingBundle, CacheBackend};
 use tectonic_bundles::itar::IndexedTarBackend;
@@ -140,7 +142,7 @@ fn we_do_a_bit_of_tomfoolery(cb: CachingBundle<IndexedTarBackend>) {
 
 fn main() -> io::Result<()> {
     let cache = Cache::get_user_default().unwrap();
-    println!("Cache info: {:?}", cache);
+    println!("Cache info: {:?}", cache.root());
     let mut backend = PlainStatusBackend::default();
     // version number only checks if it's above 32. idk man /shrug
     let mut files = tectonic_bundles::get_fallback_bundle(33, true, &mut backend).expect("error getting fallback bundle");
@@ -168,5 +170,59 @@ fn main() -> io::Result<()> {
     // it /might/ be faster to just lookup the hash in manifests, and get the corresponding file.
     // The thing is, this version is technically more cross-platform
     */
+    Ok(())
+}
+
+fn tex_setup() {
+    // "Tectonic" dir
+    let cache = Cache::get_user_default().unwrap();
+    let mut cache_dir = cache.root().to_path_buf();
+    cache_dir.push("ls-R");
+    if cache_dir.exists() {
+        return;
+    }
+
+    
+
+}
+
+fn compile_tex(f: PathBuf) -> Output {
+    Command::new("sh")
+        .arg("-c")
+        .arg(format!("tectonic -X compile {} --outdir {} --outfmt xdv", f.to_str().expect("Error: file name invalid"), env::temp_dir().to_str().expect("Error: /tmp weirdness")))
+        .output()
+        .expect("Error: tectonic failed to run")
+}
+
+fn create_svg(f: PathBuf, tect_f: PathBuf) -> Output {
+    Command::new("sh")
+        .env("TEXMFCNF", tect_f.to_str().unwrap())
+        .arg("-c")
+        .arg(format!("dvisvgm {} --output {} -n", f.to_str().expect("Error: file name invalid"), env::current_dir().to_str().expect("Error: PWD weirdness")))
+        .output()
+        .expect("Error: dvisvgm failed to run")
+}
+
+
+fn main2() -> io::Result<()> {
+    // assume dvisvgm and Tectonic are on the machine, enforce using build script
+    let file = PathBuf::from(env::args().nth(2).expect("Error: please input your TeX filename"));
+    if !file.exists() {
+        panic!("Error: {} not found.", file.to_str().unwrap());
+    }
+
+    let cache = Cache::get_user_default().unwrap();
+    tex_setup();
+
+    let tex_output = compile_tex(file);
+
+    let mut xdv_path = env::temp_dir();
+    xdv_path.push(file.file_stem().unwrap());
+    xdv_path.push(".xdv");
+
+    let svg_output = create_svg(xdv_path, cache.root().to_path_buf());
+
+    println!("Successfully wrote {}.svg", file.file_stem().unwrap().to_str().unwrap());
+
     Ok(())
 }
