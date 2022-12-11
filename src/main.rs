@@ -1,9 +1,9 @@
 use core::panic;
 use std::collections::HashMap;
-use std::env;
+use std::{env, fs};
 use std::io::{self, Read, prelude::*};
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::process::{Command, Output};
 
 use tectonic_bundles::cache::{CachingBundle, CacheBackend};
@@ -131,16 +131,30 @@ pub struct NotActuallyCachingBundle<CB: CacheBackend> {
     data_base: PathBuf,
 }
 
-fn we_do_a_bit_of_tomfoolery(cb: CachingBundle<IndexedTarBackend>) {
+#[cfg(debug_assertions)]
+fn view_cache_digests(cb: CachingBundle<IndexedTarBackend>) {
     let nacb: NotActuallyCachingBundle<IndexedTarBackend> = unsafe {
         std::mem::transmute(cb)
     };
+    
     for (k, v) in nacb.contents {
         println!("{:?} -> {:?}", k, v);
     }
 }
 
-fn main() -> io::Result<()> {
+fn fetch_cache_digest(cb: CachingBundle<IndexedTarBackend>, tect_dir: &PathBuf) -> Vec<(String, String)> {
+    // this is the one piece of unsafe code in the program, because it relies on rustc to give both
+    // structs the same layout, which it isn't guaranteed to do if they're not marked `repr(C)`.
+    let nacb: NotActuallyCachingBundle<IndexedTarBackend> = unsafe {
+        std::mem::transmute(cb)
+    };
+    
+    nacb.contents.into_iter().map(|(k, v)| {
+        (k, v.digest.create_two_part_path(&tect_dir).expect("Error: unable to fetch digest file").file_name().unwrap().to_os_string().into_string().unwrap())
+    }).collect()
+}
+
+fn main2() -> io::Result<()> {
     let cache = Cache::get_user_default().unwrap();
     println!("Cache info: {:?}", cache.root());
     let mut backend = PlainStatusBackend::default();
@@ -150,7 +164,7 @@ fn main() -> io::Result<()> {
     // WE HAVE THE STRING REPRESENTING THE LATEX ASSET (i.e. "lmroman-10-regular")
     //cache.open(tectonic_bundles::get_fallback_bundle_url(tectonic_engine_xetex::FORMAT_SERIAL), true, );
     // ok, I think I get it. 'status' is like stderr, so we can have multiple error streams
-    we_do_a_bit_of_tomfoolery(files);
+    view_cache_digests(files);
     /*
 
     let chonky_boi = files.all_files(&mut backend).expect("can't get the files of the bundle");
@@ -175,18 +189,45 @@ fn main() -> io::Result<()> {
 
 fn tex_setup() {
     // "Tectonic" dir
-    let cache = Cache::get_user_default().unwrap();
-    let mut cache_dir = cache.root().to_path_buf();
-    cache_dir.push("ls-R");
-    if cache_dir.exists() {
-        return;
+    let cache_dir = Cache::get_user_default().unwrap();
+    let cache = cache_dir.root();
+    let mut lsr = cache.to_path_buf(); lsr.push("ls-R");
+    let mut aliases = cache.to_path_buf(); aliases.push("aliases");
+    let mut config = cache.to_path_buf(); config.push("texmf.cnf");
+
+    // should update if lsr is old; check file age?
+    if !lsr.exists() {
+        Command::new("sh")
+            .arg("-c")
+            .arg(format!("cd {} && ls -LAR ./ > ls-R", lsr.to_str().unwrap()))
+            .output()
+            .expect("Error: cannot create ls-R database");
+    }
+    if !aliases.exists() {
+        let mut backend = PlainStatusBackend::default();
+        let files = tectonic_bundles::get_fallback_bundle(33, true, &mut backend).expect("error getting fallback bundle");
+
+        let mut f = File::create(aliases).expect("Error: unable to create aliases file");
+        fetch_cache_digest(files, &cache.to_path_buf()).iter().for_each(|(dig, name)| {
+            writeln!(f, "{}, {}", dig, name).expect("Error: cannot write to aliases file");
+        });
     }
 
-    
-
+    if !config.exists() {
+        let data = format!(r#"
+            TEXINPUTS={d}//
+            TEXMFDBS={d}
+            TEXMF={d}
+            TEXFONTMAPS={d}//
+            TEXFONTS={d}//
+            "#, d=cache.to_str().unwrap());
+        fs::write(config, data).expect("Error: couldn't write to texmf.cnf");
+    }
 }
 
-fn compile_tex(f: PathBuf) -> Output {
+// I would have very much liked to have done this using the tectonic bundle instead of calling the
+// executable, but unfortunately they make it very difficult to get an XDV using library functions.
+fn compile_tex(f: &Path) -> Output {
     Command::new("sh")
         .arg("-c")
         .arg(format!("tectonic -X compile {} --outdir {} --outfmt xdv", f.to_str().expect("Error: file name invalid"), env::temp_dir().to_str().expect("Error: /tmp weirdness")))
@@ -198,13 +239,13 @@ fn create_svg(f: PathBuf, tect_f: PathBuf) -> Output {
     Command::new("sh")
         .env("TEXMFCNF", tect_f.to_str().unwrap())
         .arg("-c")
-        .arg(format!("dvisvgm {} --output {} -n", f.to_str().expect("Error: file name invalid"), env::current_dir().to_str().expect("Error: PWD weirdness")))
+        .arg(format!("dvisvgm {} --output {} -n", f.to_str().expect("Error: file name invalid"), env::current_dir().unwrap().to_str().expect("Error: PWD weirdness")))
         .output()
         .expect("Error: dvisvgm failed to run")
 }
 
 
-fn main2() -> io::Result<()> {
+fn main() -> io::Result<()> {
     // assume dvisvgm and Tectonic are on the machine, enforce using build script
     let file = PathBuf::from(env::args().nth(2).expect("Error: please input your TeX filename"));
     if !file.exists() {
@@ -214,13 +255,13 @@ fn main2() -> io::Result<()> {
     let cache = Cache::get_user_default().unwrap();
     tex_setup();
 
-    let tex_output = compile_tex(file);
+    let _tex_output = compile_tex(&file);
 
     let mut xdv_path = env::temp_dir();
     xdv_path.push(file.file_stem().unwrap());
     xdv_path.push(".xdv");
 
-    let svg_output = create_svg(xdv_path, cache.root().to_path_buf());
+    let _svg_output = create_svg(xdv_path, cache.root().to_path_buf());
 
     println!("Successfully wrote {}.svg", file.file_stem().unwrap().to_str().unwrap());
 
